@@ -12,13 +12,23 @@
 
 using namespace std;
 
-
-
 struct Block {
     bool valid = false;
     bool dirty = false;
     uint32_t tag = 0;
     uint32_t lru = 0;
+};
+
+struct EvictedInfo {
+    bool happened;
+    bool dirty;
+    uint32_t addr;
+
+    EvictedInfo() {
+        happened = false;
+        dirty = false;
+        addr = 0;
+    }
 };
 
 class Cache {
@@ -34,7 +44,7 @@ public:
 
     vector< vector<Block> > sets;
 
-    uint32_t time = 0;
+    uint32_t timer;
 
     Cache();
 
@@ -42,15 +52,17 @@ public:
 
     void split(uint32_t addr, uint32_t &tag, uint32_t &index);
 
+    uint32_t buildAddress(uint32_t tag, uint32_t setIdx);
+
     int findBlock(int setIdx, uint32_t tag);
 
-    int chooseVictim(int setIdx);
+    void invalidate(uint32_t addr);
 
-    //void insert(int setIdx, uint32_t tag, bool dirty);
-    void updateCache(int setIdx, uint32_t tag, bool dirty);
+    EvictedInfo insert(uint32_t addr, bool dirty);
 
-    //bool hit(uint32_t addr, bool isWrite, bool writeAllocate, bool &evictedDirty);
-    bool hit(int setIdx, uint32_t tag, bool isWrite, bool writeAllocate, bool &evictedDirty);
+    void markDirty(uint32_t addr);
+
+    bool hit(uint32_t addr);
 };
 
 #endif // CACHE_H
