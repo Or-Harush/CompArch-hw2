@@ -1,6 +1,9 @@
 #ifndef CACHE_H
 #define CACHE_H
 
+#define READ 'r'
+#define WRITE 'w'
+
 #include <vector>
 #include <cstdint>
 #include <cmath>
@@ -8,6 +11,8 @@
 #include <stdint.h>
 
 using namespace std;
+
+
 
 struct Block {
     bool valid = false;
@@ -43,7 +48,7 @@ public:
 
     void insert(int setIdx, uint32_t tag, bool dirty);
 
-    bool access(uint32_t addr, bool isWrite, bool writeBackPolicy, bool &evictedDirty);
+    bool access(uint32_t addr, bool isWrite, bool writeAllocate, bool &evictedDirty);
 };
 
 #endif // CACHE_H
