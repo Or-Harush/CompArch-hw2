@@ -67,7 +67,7 @@ void Cache::insert(int setIdx, uint32_t tag, bool dirty) {
 	this->sets[setIdx][victim].lru = this->time++;
 }
 
-bool Cache::access(uint32_t addr, bool isWrite, bool writeBackPolicy, bool &evictedDirty) {
+bool Cache::access(uint32_t addr, bool isWrite, bool WriteAlloc, bool &evictedDirty) {
 	uint32_t tag, idx;
 	split(addr, tag, idx);
 
@@ -138,6 +138,14 @@ int main(int argc, char **argv) {
 		}
 	}
 
+	// build caches 
+	Cache l1Cache = Cache(L1Size, BSize, L1Assoc, L1Cyc); 
+	Cache l2Cache = Cache(L2Size, BSize, L2Assoc, L2Cyc); 
+
+	int countTotalCommands = 0;
+	int countHitL1 = 0;
+	int countHitL2 = 0;
+
 	while (getline(file, line)) {
 
 		stringstream ss(line);
@@ -159,7 +167,33 @@ int main(int argc, char **argv) {
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
+		unsigned long int* lineTag = new(unsigned long int);
+		unsigned long int* lineIndex = new(unsigned long int);
 
+		// if hit l1
+			// if read
+				//totall1++, l1_hit++ continue
+			// else (write)
+				// mark dirty totall1++ l1hit++ continue 
+		// else (miss l1) 
+			// totall1++ totall2++	
+			// if hit l2
+				// l2hit++
+				// if read 
+					// write to l1
+				// else (write)
+					// write to l1 mark dirty (WB policy)
+			// else (miss l2)
+				// l2miss++
+				// if read
+					// write to l2 and l1 (inclusivness principle)
+				// else (write)
+					// if write allocate
+						// write to l2 and l1 mark dirty (WB policy + inclusivness principle)
+					// else (no write allocate)
+						// write to l2 only
+
+		// ## HANDLE ACCESS TIMES 
 		// DEBUG - remove this line
 		cout << " (dec) " << num << endl;
 
@@ -168,6 +202,9 @@ int main(int argc, char **argv) {
 	double L1MissRate;
 	double L2MissRate;
 	double avgAccTime;
+
+	// l1miss = (l1total - l1hit) / l1total
+	// l2miss = (l2total - l2hit) / l2total
 
 	printf("L1miss=%.03f ", L1MissRate);
 	printf("L2miss=%.03f ", L2MissRate);
