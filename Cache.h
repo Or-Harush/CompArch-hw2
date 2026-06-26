@@ -46,9 +46,11 @@ public:
 
     int chooseVictim(int setIdx);
 
-    void insert(int setIdx, uint32_t tag, bool dirty);
+    //void insert(int setIdx, uint32_t tag, bool dirty);
+    void updateCache(int setIdx, uint32_t tag, bool dirty);
 
-    bool access(uint32_t addr, bool isWrite, bool writeAllocate, bool &evictedDirty);
+    //bool hit(uint32_t addr, bool isWrite, bool writeAllocate, bool &evictedDirty);
+    bool hit(int setIdx, uint32_t tag, bool isWrite, bool writeAllocate, bool &evictedDirty);
 };
 
 #endif // CACHE_H

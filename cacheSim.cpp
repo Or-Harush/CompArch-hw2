@@ -58,31 +58,37 @@ int Cache::chooseVictim(int setIdx) {
 	return victim;
 }
 
-void Cache::insert(int setIdx, uint32_t tag, bool dirty) {
-	int victim = chooseVictim(setIdx);
 
+void Cache::updateCache(int setIdx, uint32_t tag, bool dirty) {
+//void Cache::insert(uint32_t addr, bool dirty) {
+	//uint32_t tag, setIdx;
+	split(addr, tag, setIdx);
+
+	int victim = chooseVictim(setIdx);
 	this->sets[setIdx][victim].valid = true;
 	this->sets[setIdx][victim].tag = tag;
 	this->sets[setIdx][victim].dirty = dirty;
 	this->sets[setIdx][victim].lru = this->time++;
 }
 
-bool Cache::access(uint32_t addr, bool isWrite, bool WriteAlloc, bool &evictedDirty) {
-	uint32_t tag, idx;
-	split(addr, tag, idx);
+//bool Cache::hit(uint32_t addr, bool isWrite, bool WriteAlloc, bool &evictedDirty) {
+bool Cache::hit(int setIdx, uint32_t tag, bool isWrite, bool WriteAlloc, bool &evictedDirty) {
+	//uint32_t tag, idx;
+	//split(addr, tag, idx);
 
-	int pos = findBlock(idx, tag);
+	int pos = findBlock(setIdx, tag);
 
-	if (pos != -1) {
-		this->sets[idx][pos].lru = this->time++;
-		if (isWrite) this->sets[idx][pos].dirty = true;
+	if (pos != -1) { // Hit!
+		this->sets[setIdx][pos].lru = this->time++;
+		if (isWrite) this->sets[setIdx][pos].dirty = true;
 		return true;
 	}
 
-	int victim = chooseVictim(idx);
-	evictedDirty = this->sets[idx][victim].valid && this->sets[idx][victim].dirty;
+	// Miss!
+	int victim = chooseVictim(setIdx); // Choose a victim block if needed to evict
+	evictedDirty = this->sets[setIdx][victim].valid && this->sets[setIdx][victim].dirty;
 
-	insert(idx, tag, isWrite);
+	updateCache(setIdx, tag, isWrite);
 	return false;
 }
 
@@ -142,7 +148,7 @@ int main(int argc, char **argv) {
 	Cache l1Cache = Cache(L1Size, BSize, L1Assoc, L1Cyc); 
 	Cache l2Cache = Cache(L2Size, BSize, L2Assoc, L2Cyc); 
 
-	int countTotalCommands = 0;
+	int countTotalL1 = 0, countTotalL2 = 0;
 	int countHitL1 = 0;
 	int countHitL2 = 0;
 
@@ -169,6 +175,59 @@ int main(int argc, char **argv) {
 		num = strtoul(cutAddress.c_str(), NULL, 16);
 		unsigned long int* lineTag = new(unsigned long int);
 		unsigned long int* lineIndex = new(unsigned long int);
+		bool evictedDirtyFromL1 = false;
+		bool evictedDirtyFromL2 = false;
+		uint32_t tagL1Cache, setIdxL1Cache;
+		l1Cache.split(num, tagL1Cache, setIdxL1Cache);
+		countTotalL1++;
+		bool l1Hit = l1Cache.hit(setIdxL1Cache, tagL1Cache, operation == WRITE, WrAlloc, evictedDirtyFromL1);
+		if (l1Hit)
+		{
+			countHitL1++;
+		}
+		else
+		{
+			countTotalL2++;
+			uint32_t tagL2Cache, setIdxL2Cache;
+			l2Cache.split(num, tagL2Cache, setIdxL2Cache);
+			bool l2Hit = l2Cache.hit(setIdxL2Cache, tagL2Cache, operation == WRITE, WrAlloc, evictedDirtyFromL2);
+			if (l2Hit)
+			{
+				countHitL2++;
+				if (evictedDirtyFromL1)
+				{
+					// Write back to L2 from L1
+					l2Cache.(setIdxL2Cache, tagL2Cache, true);
+				}
+				// Update L1 - inclusive principle 
+				l1Cache.updateCache(setIdxL1Cache, tagL1Cache, operation == WRITE);		
+			}
+			else
+			{
+				// Miss in L2
+				if (operation == READ)
+				{
+					// Write to L2 and L1 
+					l2Cache.updateCache(setIdxL2Cache, tagL2Cache, false); // inclusive principle
+					l1Cache.updateCache(setIdxL1Cache, tagL1Cache, false);
+				}
+				else // WRITE
+				{
+					if (WrAlloc)
+					{
+						// Write to L2 and L1 mark dirty
+						l2Cache.insert(setIdxL2Cache, tagL2Cache, true);
+						l1Cache.insert(setIdxL1Cache, tagL1Cache, true);
+					}
+					else
+					{
+						// Write to L2 only
+						l2Cache.insert(setIdxL2Cache, tagL2Cache, false);
+					}
+				}
+			}
+		}
+		
 
 		// if hit l1
 			// if read
@@ -185,7 +244,8 @@ int main(int argc, char **argv) {
 					// write to l1 mark dirty (WB policy)
 			// else (miss l2)
 				// l2miss++
-				// if read
+				// evict from l2 and l1 if needed (if dirty write back to mem)
+				// if read					
 					// write to l2 and l1 (inclusivness principle)
 				// else (write)
 					// if write allocate
