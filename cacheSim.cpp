@@ -198,8 +198,6 @@ int main(int argc, char **argv) {
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
-		unsigned long int* lineTag = new(unsigned long int);
-		unsigned long int* lineIndex = new(unsigned long int);
 
 		countTotalL1++;
 		if (l1Cache.hit(num)) // L1 hit!
