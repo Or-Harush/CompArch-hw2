@@ -14,6 +14,8 @@ using std::ifstream;
 using std::stringstream;
 
 // Cache funcitons
+Cache::Cache() {};
+
 Cache::Cache(int sizeBLog, int blockBLog, int assocLog, int cyc){
 	this->sizeBytes = 1 << sizeBLog;
 	this->blockSize = 1 << blockBLog;
