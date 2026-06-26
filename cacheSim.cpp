@@ -188,13 +188,7 @@ int main(int argc, char **argv) {
 			return 0;
 		}
 
-		// DEBUG - remove this line
-		cout << "operation: " << operation;
-
 		string cutAddress = address.substr(2); // Removing the "0x" part of the address
-
-		// DEBUG - remove this line
-		cout << ", address (hex)" << cutAddress;
 
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
@@ -252,42 +246,12 @@ int main(int argc, char **argv) {
 						l2Cache.markDirty(ev1.addr);
 					}
 					EvictedInfo ev2 = l2Cache.insert(num, false); // Insert into L2 - inclusive policy
-					if (ev2.happened) {  // 
+					if (ev2.happened) {
 						l1Cache.invalidate(ev2.addr); // If evicted from L2, invalidate in L1 (inclusive policy)
 					}				
 				}
 			}
 		}
-		
-
-		// if hit l1
-			// if read
-				//totall1++, l1_hit++ continue
-			// else (write)
-				// mark dirty totall1++ l1hit++ continue 
-		// else (miss l1) 
-			// totall1++ totall2++	
-			// if hit l2
-				// l2hit++
-				// if read 
-					// write to l1
-				// else (write)
-					// write to l1 mark dirty (WB policy)
-			// else (miss l2)
-				// l2miss++
-				// evict from l2 and l1 if needed (if dirty write back to mem)
-				// if read					
-					// write to l2 and l1 (inclusivness principle)
-				// else (write)
-					// if write allocate
-						// write to l2 and l1 mark dirty (WB policy + inclusivness principle)
-					// else (no write allocate)
-						// write to l2 only
-
-		// ## HANDLE ACCESS TIMES 
-		// DEBUG - remove this line
-		cout << " (dec) " << num << endl;
-
 	}
 
 	double L1MissRate;
