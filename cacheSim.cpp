@@ -2,16 +2,71 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
-#include "Cache.h"
 #include <cmath>
+#include <vector>
+#include <cstdint>
+#include <climits>
+#include <stdint.h>
 
-using std::FILE;
-using std::string;
-using std::cout;
-using std::endl;
-using std::cerr;
-using std::ifstream;
-using std::stringstream;
+#define READ 'r'
+#define WRITE 'w'
+
+using namespace std;
+
+struct Block {
+    bool valid = false;
+    bool dirty = false;
+    uint32_t tag = 0;
+    uint32_t lru = 0;
+};
+
+struct EvictedInfo {
+    bool happened;
+    bool dirty;
+    uint32_t addr;
+
+    EvictedInfo() {
+        happened = false;
+        dirty = false;
+        addr = 0;
+    }
+};
+
+class Cache {
+public:
+    int sizeBytes;
+    int blockSize;
+    int assoc;
+    int cycles;
+
+    int numSets;
+    int indexBits;
+    int offsetBits;
+
+    vector< vector<Block> > sets;
+
+    uint32_t timer;
+
+    Cache();
+
+    Cache(int sizeBLog, int blockBLog, int assocLog, int cyc);
+
+    void split(uint32_t addr, uint32_t &tag, uint32_t &index);
+
+    uint32_t buildAddress(uint32_t tag, uint32_t setIdx);
+
+    int findBlock(int setIdx, uint32_t tag);
+
+    void invalidate(uint32_t addr);
+
+    EvictedInfo insert(uint32_t addr, bool dirty);
+
+    void markDirty(uint32_t addr);
+
+    bool hit(uint32_t addr);
+};
+
+#define NO_ID -1
 
 // Cache funcitons
 Cache::Cache() {};
@@ -37,10 +92,11 @@ void Cache::split(uint32_t addr, uint32_t &tag, uint32_t &index) {
 
 int Cache::findBlock(int setIdx, uint32_t tag) {
 	for (int i = 0; i < this->assoc; i++) {
+		// if found a valid block with the same tag return the block id
 		if (this->sets[setIdx][i].valid && this->sets[setIdx][i].tag == tag)
 			return i;
 	}
-	return -1;
+	return NO_ID; // otherwise return no ID
 }
 uint32_t Cache::buildAddress(uint32_t tag, uint32_t setIdx) { // builds the address from the tag and set index for evicted block
 	return (tag << (this->indexBits + this->offsetBits)) | (setIdx << this->offsetBits);
@@ -52,7 +108,7 @@ void Cache::markDirty(uint32_t addr) {
         split(addr, tag, setIdx);
 
         int pos = findBlock(setIdx, tag);
-        if (pos != -1) {
+        if (pos != NO_ID) {
             sets[setIdx][pos].dirty = true;
             sets[setIdx][pos].lru = timer++;
         }
@@ -64,7 +120,7 @@ EvictedInfo Cache::insert(uint32_t addr, bool dirty) {
 	uint32_t tag, setIdx;
 	split(addr, tag, setIdx);
 
-	for (int i = 0; i < assoc; i++) {
+	for (int i = 0; i < assoc; i++) { // go through all blocks and find a valid block to write to 
 		if (!sets[setIdx][i].valid) {
 			sets[setIdx][i].valid = true;
 			sets[setIdx][i].dirty = dirty;
@@ -73,21 +129,23 @@ EvictedInfo Cache::insert(uint32_t addr, bool dirty) {
 			return info;
 		}
 	}
-
+	
+	// all blocks are allocated - need to evict someone 
 	int victim = 0;
 	uint64_t best = sets[setIdx][0].lru;
 
-	for (int i = 1; i < assoc; i++) {
+	for (int i = 1; i < assoc; i++) { // find the least recently used block in set
 		if (sets[setIdx][i].lru < best) {
 			best = sets[setIdx][i].lru;
 			victim = i;
 		}
 	}
-
+	
 	info.happened = true;
 	info.dirty = sets[setIdx][victim].dirty;
 	info.addr = buildAddress(sets[setIdx][victim].tag, setIdx);
 
+	// store in the evicted slot
 	sets[setIdx][victim].valid = true;
 	sets[setIdx][victim].dirty = dirty;
 	sets[setIdx][victim].tag = tag;
@@ -101,7 +159,7 @@ void Cache::invalidate(uint32_t addr) {
 	split(addr, tag, setIdx);
 
 	int pos = findBlock(setIdx, tag);
-	if (pos != -1) {
+	if (pos != NO_ID) {
 		sets[setIdx][pos].valid = false;
 		sets[setIdx][pos].dirty = false;
 	}
@@ -111,7 +169,7 @@ bool Cache::hit(uint32_t addr) {
 	uint32_t tag, setIdx;
 	split(addr, tag, setIdx);
 	int pos = findBlock(setIdx, tag);
-	if (pos == -1) return false;
+	if (pos == NO_ID) return false;
 
 	sets[setIdx][pos].lru = timer++;
 	return true;
@@ -125,7 +183,6 @@ int main(int argc, char **argv) {
 		cerr << "Not enough arguments" << endl;
 		return 0;
 	}
-
 	// Get input arguments
 
 	// File
@@ -172,6 +229,7 @@ int main(int argc, char **argv) {
 	Cache l1Cache = Cache(L1Size, BSize, L1Assoc, L1Cyc); 
 	Cache l2Cache = Cache(L2Size, BSize, L2Assoc, L2Cyc); 
 
+	// counters
 	int countTotalL1 = 0, countTotalL2 = 0;
 	int countHitL1 = 0;
 	int countHitL2 = 0;
@@ -193,14 +251,12 @@ int main(int argc, char **argv) {
 		unsigned long int num = 0;
 		num = strtoul(cutAddress.c_str(), NULL, 16);
 
-		countTotalL1++;
+		countTotalL1++; // every access goes through L1 first 
 		if (l1Cache.hit(num)) // L1 hit!
 		{
-			totalTime += L1Cyc;
+			totalTime += L1Cyc; 
 			countHitL1++;
-			if (operation == WRITE) {
-            	l1Cache.markDirty(num);
-        	}
+			if (operation == WRITE) l1Cache.markDirty(num);
 		}
 		else if (l2Cache.hit(num)) { // L1 miss, L2 hit!
 			countHitL2++;
@@ -225,31 +281,31 @@ int main(int argc, char **argv) {
 			}
 		}
 		else { // Miss in both L1 and L2
-			countTotalL2++;
-			totalTime += L1Cyc + L2Cyc + MemCyc;
+			countTotalL2++; 
+			totalTime += L1Cyc + L2Cyc + MemCyc; // t_access = t_L1 + t_L2
 
 			if (operation == READ) {
+				EvictedInfo ev2 = l2Cache.insert(num, false); // Insert into L2 
+				if (ev2.happened) {
+					l1Cache.invalidate(ev2.addr); // If evicted from L2, invalidate in L1 (inclusive policy)
+				}
 				EvictedInfo ev1 = l1Cache.insert(num, false); // Insert into L1
 				if (ev1.happened && ev1.dirty) { // If evicted from L1 and dirty, mark dirty in L2
 					l2Cache.markDirty(ev1.addr);
 				}
 
-				EvictedInfo ev2 = l2Cache.insert(num, false); // Insert into L2 - inclusive policy
-				if (ev2.happened) {
-					l1Cache.invalidate(ev2.addr); // If evicted from L2, invalidate in L1 (inclusive policy)
-				}
 			}
-			else {
+			else { // write
 				if (WrAlloc) { // Write allocate policy - write to L1 and mark dirty
-					EvictedInfo ev1 = l1Cache.insert(num, true);
-					if (ev1.happened && ev1.dirty) { // If evicted from L1 and dirty, mark dirty in L2
-						l2Cache.markDirty(ev1.addr);
-					}
 					EvictedInfo ev2 = l2Cache.insert(num, false); // Insert into L2 - inclusive policy
 					if (ev2.happened) {
 						l1Cache.invalidate(ev2.addr); // If evicted from L2, invalidate in L1 (inclusive policy)
 					}				
-				}
+					EvictedInfo ev1 = l1Cache.insert(num, true);
+					if (ev1.happened && ev1.dirty) { // If evicted from L1 and dirty, mark dirty in L2
+						l2Cache.markDirty(ev1.addr);
+					}
+				} // else - no write allocate - no point in caching it if memory gets updated anyway
 			}
 		}
 	}
@@ -259,7 +315,8 @@ int main(int argc, char **argv) {
 	double avgAccTime;
 
 	L1MissRate = double(countTotalL1 - countHitL1) / countTotalL1;
-	L2MissRate = double(countTotalL2 - countHitL2) / countTotalL2;
+	L2MissRate = (countTotalL2 != 0) ? 
+				double(countTotalL2 - countHitL2) / countTotalL2 : 0; // handle always l1 hit
 	avgAccTime = totalTime / countTotalL1;
 
 	printf("L1miss=%.03f ", L1MissRate);
