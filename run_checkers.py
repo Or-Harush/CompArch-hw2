@@ -23,7 +23,7 @@ class C:
 
 def run_tests():
     print(C.BOLD + "[*] Compiling cacheSim..." + C.RESET)
-    compile_cmd = "g++ -g -Wall -o cacheSim cacheSim.cpp"
+    compile_cmd = "g++ -std=c++11 -Wall -o cacheSim cacheSim.cpp"
     if os.system(compile_cmd) != 0:
         print(C.RED + "[!] Compilation failed!" + C.RESET)
         sys.exit(1)
